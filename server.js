@@ -105,10 +105,14 @@ app.get('/api/view-data', async (req, res) => {
         `);
         res.json(expenses);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        // Send the full error object instead of just error.message
+        res.status(500).json({ 
+            message: "Database fetch failed", 
+            details: error.toString(),
+            code: error.code || "UNKNOWN"
+        });
     }
 });
-
 
 
 
