@@ -25,23 +25,28 @@
         <form id="expense-form">
             <div class="form-group">
                 <label for="title">Item Title:</label>
-                <input type="text" id="title" name="title" placeholder="e.g., Office Supplies" required>
+                <input type="text" id="title" placeholder="e.g., Office Supplies" required>
             </div>
 
             <div class="form-group">
                 <label for="amount">Amount ($):</label>
-                <input type="number" id="amount" name="amount" step="0.01" placeholder="0.00" required>
+                <input type="number" id="amount" step="0.01" placeholder="0.00" required>
             </div>
 
             <div class="form-group">
                 <label for="category">Category:</label>
-                <select id="category" name="category" required>
+                <select id="category" required>
                     <option value="">-- Select Category --</option>
                     <option value="Software">Software/Tools</option>
                     <option value="Marketing">Marketing</option>
                     <option value="Travel">Travel</option>
                     <option value="Operations">Operations</option>
                 </select>
+            </div>
+
+            <div class="form-group">
+                <label for="vendor_id">Vendor ID (Optional):</label>
+                <input type="number" id="vendor_id" placeholder="Leave blank or type vendor ID number">
             </div>
 
             <button type="submit">Save Expense to Cloud</button>
@@ -52,20 +57,20 @@
 
     <script>
         document.getElementById('expense-form').addEventListener('submit', async (e) => {
-            e.preventDefault(); // Stop the page from reloading blindly
+            e.preventDefault();
 
             const statusDiv = document.getElementById('status-message');
-            statusDiv.style.display = 'none'; // Clear previous status
+            statusDiv.style.display = 'none';
 
-            // 1. Collect form input values
+            // Collect variables to perfectly match server.js req.body parameters
             const formData = {
                 title: document.getElementById('title').value,
                 amount: document.getElementById('amount').value,
-                category: document.getElementById('category').value
+                category: document.getElementById('category').value,
+                vendor_id: document.getElementById('vendor_id').value || null
             };
 
             try {
-                // 2. Post data directly to your Railway server endpoint
                 const response = await fetch('/api/expenses', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -75,23 +80,18 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    // 🎉 SUCCESS ACKNOWLEDGMENT
                     statusDiv.className = 'status-message success';
                     statusDiv.innerHTML = `✅ Success! Database acknowledged: ${result.message}`;
                     statusDiv.style.display = 'block';
-                    
-                    // Clear the input fields so you can add another one
                     document.getElementById('expense-form').reset();
                 } else {
-                    // SERVER ERROR HANDLING
                     statusDiv.className = 'status-message error';
                     statusDiv.innerHTML = `❌ Failed to save: ${result.error || 'Server error'}`;
                     statusDiv.style.display = 'block';
                 }
             } catch (err) {
-                // NETWORK ERROR HANDLING
                 statusDiv.className = 'status-message error';
-                statusDiv.innerHTML = `❌ Connection Mismatch: Your server might be down or deploying.`;
+                statusDiv.innerHTML = `❌ Connection Mismatch: Ensure you have deployed the backend server changes.`;
                 statusDiv.style.display = 'block';
             }
         });
