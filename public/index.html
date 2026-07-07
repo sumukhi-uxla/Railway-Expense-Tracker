@@ -2,77 +2,78 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Organization Expense Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Tracked Expenses</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
-        form { display: flex; gap: 10px; margin-bottom: 20px; }
-        input, select, button { padding: 8px; }
-        .expense-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #ddd; align-items: center; }
-        .delete-btn { color: red; cursor: pointer; border: none; background: none; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background-color: #f9f9fb; color: #333; }
+        h1 { color: #4f46e5; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #edf2f7; }
+        th { background-color: #4f46e5; color: white; font-weight: 600; }
+        tr:hover { background-color: #f1f5f9; }
+        .amount { font-weight: bold; color: #10b981; }
     </style>
 </head>
 <body>
 
-    <h2>Corporate Expense Tracker</h2>
-    
-    <form id="expenseForm">
-        <input type="text" id="title" placeholder="Item/Vendor" required>
-        <input type="number" id="amount" placeholder="Amount" step="0.01" required>
-        <select id="category">
-            <option value="Software">Software/SaaS</option>
-            <option value="Marketing">Marketing</option>
-            <option value="Travel">Travel</option>
-            <option value="Office">Office Supplies</option>
-        </select>
-        <button type="submit">Add</button>
-    </form>
+    <h1>📋 Your Saved Expenses</h1>
+    <p>Viewing live data tracked from your cloud database:</p>
 
-    <div id="expenseList"></div>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Vendor</th>
+                <th>Amount</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody id="expense-rows">
+            <tr>
+                <td colspan="6" style="text-align: center; color: #718096;">Loading expenses from the cloud...</td>
+            </tr>
+        </tbody>
+    </table>
 
     <script>
-        const form = document.getElementById('expenseForm');
-        const list = document.getElementById('expenseList');
-
-        // Fetch and show expenses
+        // Fetch data from our new API endpoint automatically when the page loads
         async function loadExpenses() {
-            list.innerHTML = '';
-            const res = await fetch('/api/expenses');
-            const data = await res.json();
-            data.forEach(exp => {
-                const div = document.createElement('div');
-                div.className = 'expense-item';
-                div.innerHTML = `
-                    <span><strong>${exp.title}</strong> - $${exp.amount} (${exp.category})</span>
-                    <button class="delete-btn" onclick="deleteExpense(${exp.id})">Delete</button>
-                `;
-                list.appendChild(div);
-            });
+            try {
+                const response = await fetch('/api/view-data');
+                const expenses = await response.json();
+                
+                const tableBody = document.getElementById('expense-rows');
+                tableBody.innerHTML = ''; // Clear loading text
+
+                if (expenses.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No expenses recorded yet.</td></tr>`;
+                    return;
+                }
+
+                // Loop through every expense row and add it to the page
+                expenses.forEach(expense => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${expense.id}</td>
+                        <td><strong>${expense.title}</strong></td>
+                        <td>${expense.category}</td>
+                        <td>${expense.vendor_name || 'N/A'}</td>
+                        <td class="amount">$${parseFloat(expense.amount).toFixed(2)}</td>
+                        <td>${new Date(expense.created_at).toLocaleDateString()}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error("Error fetching dashboard rows:", error);
+                document.getElementById('expense-rows').innerHTML = 
+                    `<tr><td colspan="6" style="text-align: center; color: #ef4444;">Failed to load cloud entries.</td></tr>`;
+            }
         }
 
-        // Add expense (CREATE)
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const payload = {
-                title: document.getElementById('title').value,
-                amount: document.getElementById('amount').value,
-                category: document.getElementById('category').value
-            };
-            await fetch('/api/expenses', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            form.reset();
-            loadExpenses();
-        });
-
-        // Delete expense (DELETE)
-        async function deleteExpense(id) {
-            await fetch(`/api/expenses/${id}`, { method: 'DELETE' });
-            loadExpenses();
-        }
-
-        loadExpenses();
+        // Execute the fetch configuration on screen mount
+        window.onload = loadExpenses;
     </script>
 </body>
 </html>
