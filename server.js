@@ -1,63 +1,120 @@
 const express = require('express');
-const db = require('./db');
+const mysql = require('mysql2/promise');
+const path = require('path');
+
 const app = express();
 
-// Middlewares
-app.use(express.json()); // Lets your app read JSON sent from the frontend
-app.use(express.static('public')); // Serves your HTML/CSS/JS frontend files automatically
+// Middleware to handle incoming form data and JSON payloads
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-// 1. CREATE: Add a new expense
+// Serve static frontend files (HTML, CSS, JS) from a public folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Set up the database connection pool using Railway's environment variables
+const pool = mysql.createPool({
+    host: process.env.MARIADBHOST || process.env.RAILWAY_PRIVATE_DOMAIN || 'localhost',
+    user: process.env.MARIADBUSER || 'root',
+    password: process.env.MARIADBPASSWORD || process.env.MARIADB_ROOT_PASSWORD,
+    database: process.env.MARIADBDATABASE || process.env.MARIADB_DATABASE || 'expense_tracker',
+    port: process.env.MARIADBPORT || 3306,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+});
+
+// Helper function to initialize database tables automatically on startup
+async function initializeDatabase() {
+    try {
+        const connection = await pool.getConnection();
+        console.log('✅ Connected to MariaDB Cloud Database successfully.');
+
+        // 1. Create Vendors Table
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS vendors (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        // 2. Create Expenses Table
+        await connection.query(`
+            CREATE TABLE IF NOT EXISTS expenses (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                amount DECIMAL(10, 2) NOT NULL,
+                category VARCHAR(100) NOT NULL,
+                vendor_id INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL
+            );
+        `);
+
+        console.log('📚 Database schema verified: "vendors" and "expenses" tables are ready.');
+        connection.release();
+    } catch (error) {
+        console.error('❌ Database initialization failed:', error.message);
+    }
+}
+
+// Initialize tables
+initializeDatabase();
+
+
+
+// Route 1: Save a new vendor
+app.post('/api/vendors', async (req, res) => {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Vendor name is required' });
+
+    try {
+        await pool.query('INSERT INTO vendors (name) VALUES (?) ON DUPLICATE KEY UPDATE name=name', [name]);
+        res.status(201).json({ message: 'Vendor processed successfully!' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Route 2: Save a new expense
 app.post('/api/expenses', async (req, res) => {
-    const { title, amount, category } = req.body;
+    const { title, amount, category, vendor_id } = req.body;
+    if (!title || !amount || !category) {
+        return res.status(400).json({ error: 'Missing required expense fields' });
+    }
+
     try {
-        const [result] = await db.query(
-            'INSERT INTO expenses (title, amount, category) VALUES (?, ?, ?)',
-            [title, amount, category]
+        await pool.query(
+            'INSERT INTO expenses (title, amount, category, vendor_id) VALUES (?, ?, ?, ?)',
+            [title, amount, category, vendor_id || null]
         );
-        res.status(201).json({ id: result.insertId, title, amount, category });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(201).json({ message: 'Expense tracked successfully!' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
-// 2. READ: Get all expenses
-app.get('/api/expenses', async (req, res) => {
+// Route 3: The HeidiSQL Alternative Endpoint (View all data directly as clean JSON)
+app.get('/api/view-data', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM expenses ORDER BY created_at DESC');
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        const [expenses] = await pool.query(`
+            SELECT e.id, e.title, e.amount, e.category, v.name AS vendor_name, e.created_at 
+            FROM expenses e 
+            LEFT JOIN vendors v ON e.vendor_id = v.id 
+            ORDER BY e.created_at DESC
+        `);
+        res.json(expenses);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
-// 3. UPDATE: Modify an existing expense
-app.put('/api/expenses/:id', async (req, res) => {
-    const { id } = req.params;
-    const { title, amount, category } = req.body;
-    try {
-        await db.query(
-            'UPDATE expenses SET title = ?, amount = ?, category = ? WHERE id = ?',
-            [title, amount, category, id]
-        );
-        res.json({ message: 'Expense updated successfully' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
 
-// 4. DELETE: Remove an expense
-app.delete('/api/expenses/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        await db.query('DELETE FROM expenses WHERE id = ?', [id]);
-        res.json({ message: 'Expense deleted successfully' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
 
-// Start Server
+
+
+// Railway injects a dynamic port into process.env.PORT. Fallback to 3000 locally.
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server executing cleanly on http://localhost:${PORT}`);
+app.listen(PORT, () => {
+    console.log(`🚀 Production server streaming live on port ${PORT}`);
 });
