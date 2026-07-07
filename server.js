@@ -1,17 +1,18 @@
 const express = require('express');
 const mysql = require('mysql2/promise');
 const path = require('path');
-
 const app = express();
 
-// Middleware to handle incoming form data and JSON payloads
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+const PORT = process.env.PORT || 3000;
 
-// Serve static frontend files (HTML, CSS, JS) from a public folder
+// Middleware to parse JSON and Form submissions
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve all static frontend files automatically from the 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Set up the database connection pool using Railway's environment variables
+// 1. Updated Connection Pool for Railway Production Environment
 const pool = mysql.createPool({
     host: process.env.RAILWAY_PRIVATE_DOMAIN || process.env.MARIADBHOST || 'localhost',
     user: process.env.MARIADBUSER || 'root',
@@ -22,78 +23,44 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0
 });
-// Helper function to initialize database tables automatically on startup
-async function initializeDatabase() {
+
+// Test the cloud database connection on startup
+(async () => {
     try {
         const connection = await pool.getConnection();
         console.log('✅ Connected to MariaDB Cloud Database successfully.');
-
-        // 1. Create Vendors Table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS vendors (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(255) NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        `);
-
-        // 2. Create Expenses Table
-        await connection.query(`
-            CREATE TABLE IF NOT EXISTS expenses (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                title VARCHAR(255) NOT NULL,
-                amount DECIMAL(10, 2) NOT NULL,
-                category VARCHAR(100) NOT NULL,
-                vendor_id INT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE SET NULL
-            );
-        `);
-
-        console.log('📚 Database schema verified: "vendors" and "expenses" tables are ready.');
         connection.release();
     } catch (error) {
-        console.error('❌ Database initialization failed:', error.message);
+        console.error('❌ Database connection failure during startup:', error.message);
     }
-}
+})();
 
-// Initialize tables
-initializeDatabase();
-
-
-
-// Route 1: Save a new vendor
-app.post('/api/vendors', async (req, res) => {
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ error: 'Vendor name is required' });
-
-    try {
-        await pool.query('INSERT INTO vendors (name) VALUES (?) ON DUPLICATE KEY UPDATE name=name', [name]);
-        res.status(201).json({ message: 'Vendor processed successfully!' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Route 2: Save a new expense
+// 2. POST Endpoint: Receive form data and save to database
 app.post('/api/expenses', async (req, res) => {
     const { title, amount, category, vendor_id } = req.body;
-    if (!title || !amount || !category) {
-        return res.status(400).json({ error: 'Missing required expense fields' });
-    }
+
+    // Direct clean-up: Convert empty form strings to clean database NULL values
+    const finalVendorId = (vendor_id === "" || vendor_id === undefined || vendor_id === null) ? null : vendor_id;
 
     try {
-        await pool.query(
+        const [result] = await pool.query(
             'INSERT INTO expenses (title, amount, category, vendor_id) VALUES (?, ?, ?, ?)',
-            [title, amount, category, vendor_id || null]
+            [title, amount, category, finalVendorId]
         );
-        res.status(201).json({ message: 'Expense tracked successfully!' });
+        
+        console.log(`[Database Sync]: Row successfully saved with ID ${result.insertId}`);
+        res.status(201).json({ message: "Expense tracked successfully!", id: result.insertId });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error("❌ Database Insert Error:", error);
+        res.status(500).json({ 
+            error: "Server error", 
+            details: error.toString(),
+            code: error.code || "UNKNOWN"
+        });
     }
 });
 
-// Route 3: The HeidiSQL Alternative Endpoint (View all data directly as clean JSON)
+// 3. GET Endpoint: Read and view all saved data safely inside the browser
 app.get('/api/view-data', async (req, res) => {
     try {
         const [expenses] = await pool.query(`
@@ -104,7 +71,7 @@ app.get('/api/view-data', async (req, res) => {
         `);
         res.json(expenses);
     } catch (error) {
-        // Send the full error object instead of just error.message
+        console.error("❌ Database Fetch Error:", error);
         res.status(500).json({ 
             message: "Database fetch failed", 
             details: error.toString(),
@@ -113,11 +80,12 @@ app.get('/api/view-data', async (req, res) => {
     }
 });
 
+// Fallback: Redirect any unknown page layouts back to your index form
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-
-
-// Railway injects a dynamic port into process.env.PORT. Fallback to 3000 locally.
-const PORT = process.env.PORT || 3000;
+// Start listening for traffic
 app.listen(PORT, () => {
     console.log(`🚀 Production server streaming live on port ${PORT}`);
 });
