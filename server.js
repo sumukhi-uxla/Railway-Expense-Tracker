@@ -81,10 +81,10 @@ app.get('/api/view-data', async (req, res) => {
 });
 
 // Fallback: Redirect any unknown page layouts back to your index form
-app.get('*', (req, res) => {
+// TO THIS FIXED BLOCK:
+app.get('(.*)', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
-
 // Start listening for traffic
 app.listen(PORT, () => {
     console.log(`🚀 Production server streaming live on port ${PORT}`);
