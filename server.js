@@ -13,16 +13,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Set up the database connection pool using Railway's environment variables
 const pool = mysql.createPool({
-    host: process.env.MARIADBHOST || process.env.RAILWAY_PRIVATE_DOMAIN || 'localhost',
+    host: process.env.RAILWAY_PRIVATE_DOMAIN || process.env.MARIADBHOST || 'localhost',
     user: process.env.MARIADBUSER || 'root',
-    password: process.env.MARIADBPASSWORD || process.env.MARIADB_ROOT_PASSWORD,
-    database: process.env.MARIADBDATABASE || process.env.MARIADB_DATABASE || 'expense_tracker',
-    port: process.env.MARIADBPORT || 3306,
+    password: process.env.MARIADB_ROOT_PASSWORD || process.env.MARIADBPASSWORD,
+    database: process.env.MARIADB_DATABASE || process.env.MARIADBDATABASE || 'expense_tracker',
+    port: process.env.MARIADBPORT ? parseInt(process.env.MARIADBPORT) : 3306,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
 });
-
 // Helper function to initialize database tables automatically on startup
 async function initializeDatabase() {
     try {
