@@ -3,77 +3,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Tracked Expenses</title>
+    <title>Track Your Expenses</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background-color: #f9f9fb; color: #333; }
-        h1 { color: #4f46e5; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #edf2f7; }
-        th { background-color: #4f46e5; color: white; font-weight: 600; }
-        tr:hover { background-color: #f1f5f9; }
-        .amount { font-weight: bold; color: #10b981; }
+        body { font-family: sans-serif; margin: 40px; background-color: #f4f4f9; }
+        .form-container { background: white; padding: 25px; border-radius: 8px; max-width: 400px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #4f46e5; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; }
+        button:hover { background-color: #4338ca; }
+        #status-message { margin-top: 15px; padding: 10px; border-radius: 4px; display: none; font-weight: bold; }
+        .success { background-color: #d1fae5; color: #065f46; border: 1px solid #34d399; }
+        .error { background-color: #fee2e2; color: #991b1b; border: 1px solid #f87171; }
     </style>
 </head>
 <body>
 
-    <h1>📋 Your Saved Expenses</h1>
-    <p>Viewing live data tracked from your cloud database:</p>
+    <h2>💰 Add New Expense</h2>
 
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Vendor</th>
-                <th>Amount</th>
-                <th>Date</th>
-            </tr>
-        </thead>
-        <tbody id="expense-rows">
-            <tr>
-                <td colspan="6" style="text-align: center; color: #718096;">Loading expenses from the cloud...</td>
-            </tr>
-        </tbody>
-    </table>
+    <div class="form-container">
+        <form id="expense-form">
+            <div class="form-group">
+                <label for="title">Item Title:</label>
+                <input type="text" id="title" name="title" placeholder="e.g., Office Supplies" required>
+            </div>
+
+            <div class="form-group">
+                <label for="amount">Amount ($):</label>
+                <input type="number" id="amount" name="amount" step="0.01" placeholder="0.00" required>
+            </div>
+
+            <div class="form-group">
+                <label for="category">Category:</label>
+                <select id="category" name="category" required>
+                    <option value="">-- Select Category --</option>
+                    <option value="Software">Software/Tools</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Travel">Travel</option>
+                    <option value="Operations">Operations</option>
+                </select>
+            </div>
+
+            <button type="submit">Save Expense to Cloud</button>
+        </form>
+
+        <div id="status-message"></div>
+    </div>
 
     <script>
-        // Fetch data from our new API endpoint automatically when the page loads
-        async function loadExpenses() {
+        document.getElementById('expense-form').addEventListener('submit', async (e) => {
+            e.preventDefault(); // Stop the page from reloading blindly
+
+            const statusDiv = document.getElementById('status-message');
+            statusDiv.style.display = 'none'; // Clear previous status
+
+            // 1. Collect form input values
+            const formData = {
+                title: document.getElementById('title').value,
+                amount: document.getElementById('amount').value,
+                category: document.getElementById('category').value
+            };
+
             try {
-                const response = await fetch('/api/view-data');
-                const expenses = await response.json();
-                
-                const tableBody = document.getElementById('expense-rows');
-                tableBody.innerHTML = ''; // Clear loading text
-
-                if (expenses.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center;">No expenses recorded yet.</td></tr>`;
-                    return;
-                }
-
-                // Loop through every expense row and add it to the page
-                expenses.forEach(expense => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${expense.id}</td>
-                        <td><strong>${expense.title}</strong></td>
-                        <td>${expense.category}</td>
-                        <td>${expense.vendor_name || 'N/A'}</td>
-                        <td class="amount">$${parseFloat(expense.amount).toFixed(2)}</td>
-                        <td>${new Date(expense.created_at).toLocaleDateString()}</td>
-                    `;
-                    tableBody.appendChild(row);
+                // 2. Post data directly to your Railway server endpoint
+                const response = await fetch('/api/expenses', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
                 });
-            } catch (error) {
-                console.error("Error fetching dashboard rows:", error);
-                document.getElementById('expense-rows').innerHTML = 
-                    `<tr><td colspan="6" style="text-align: center; color: #ef4444;">Failed to load cloud entries.</td></tr>`;
-            }
-        }
 
-        // Execute the fetch configuration on screen mount
-        window.onload = loadExpenses;
+                const result = await response.json();
+
+                if (response.ok) {
+                    // 🎉 SUCCESS ACKNOWLEDGMENT
+                    statusDiv.className = 'status-message success';
+                    statusDiv.innerHTML = `✅ Success! Database acknowledged: ${result.message}`;
+                    statusDiv.style.display = 'block';
+                    
+                    // Clear the input fields so you can add another one
+                    document.getElementById('expense-form').reset();
+                } else {
+                    // SERVER ERROR HANDLING
+                    statusDiv.className = 'status-message error';
+                    statusDiv.innerHTML = `❌ Failed to save: ${result.error || 'Server error'}`;
+                    statusDiv.style.display = 'block';
+                }
+            } catch (err) {
+                // NETWORK ERROR HANDLING
+                statusDiv.className = 'status-message error';
+                statusDiv.innerHTML = `❌ Connection Mismatch: Your server might be down or deploying.`;
+                statusDiv.style.display = 'block';
+            }
+        });
     </script>
+
 </body>
 </html>
